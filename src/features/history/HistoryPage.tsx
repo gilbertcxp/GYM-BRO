@@ -56,7 +56,7 @@ export default function HistoryPage() {
 
   return (
     <div className="animate-fade-up">
-      <PageHeader title="Historial y reportes" subtitle={`${list.length} sesiones con los filtros actuales`}
+      <PageHeader title="Historial y reportes" subtitle={`${list.length} ${list.length === 1 ? 'sesión' : 'sesiones'} con los filtros actuales`}
         actions={<>
           <Button variant="outline" disabled={!list.length} onClick={() => exportSessionsCsv(list, unit)}><Download className="h-4 w-4" /> CSV</Button>
           {who === me && <div className="flex gap-1">

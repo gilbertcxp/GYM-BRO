@@ -4,8 +4,8 @@ import { BarChartCard, LineChartCard } from '@/components/charts'
 import { RangeFilter, useRange } from '@/components/RangeFilter'
 import { Badge, Card, CardTitle, EmptyState, Input, LoadingBlock, PageHeader, Select, Tabs } from '@/components/ui'
 import { bestRecords, useCompletedSessions, useExercises, useRecords, useUnit } from '@/data/queries'
-import { completedIn, exerciseHistory, groupByPeriod, sessionStats, volumeByMuscle } from '@/lib/calc'
-import { fmtDate, fmtShort, inRange, type DateRange } from '@/lib/dates'
+import { completedIn, exerciseHistory, groupByPeriod, isWorkingSet, sessionStats, volumeByMuscle } from '@/lib/calc'
+import { fmtDate, fmtShort, inRange, sessionAxisLabels, type DateRange } from '@/lib/dates'
 import { MUSCLE_LABELS, PR_LABELS } from '@/lib/labels'
 import type { WorkoutSession } from '@/lib/types'
 import { fmtVolume, fmtWeight, kgTo } from '@/lib/units'
@@ -43,6 +43,8 @@ function StrengthTab({ sessions }: { sessions: WorkoutSession[] }) {
   const trained = useMemo(() => {
     const m = new Map<string, { name: string; n: number }>()
     for (const s of sessions) for (const we of s.workout_exercises ?? []) {
+      // Solo ejercicios con al menos una serie de trabajo completada.
+      if (!(we.workout_sets ?? []).some(isWorkingSet)) continue
       const c = m.get(we.exercise_id) ?? { name: we.exercise?.name ?? '', n: 0 }
       c.n++
       m.set(we.exercise_id, c)
@@ -56,8 +58,9 @@ function StrengthTab({ sessions }: { sessions: WorkoutSession[] }) {
   const best = bestRecords(records)
   const bestSet = allPoints.reduce<{ weight: number; reps: number; date: string } | null>((acc, p) =>
     p.bestSet && (!acc || p.bestSet.weight > acc.weight || (p.bestSet.weight === acc.weight && p.bestSet.reps > acc.reps)) ? { ...p.bestSet, date: p.date } : acc, null)
-  const data = points.map((p) => ({
-    date: fmtShort(p.date), max: r1(kgTo(p.maxWeight, unit)), e1rm: p.bestE1rm === null ? null : r1(kgTo(p.bestE1rm, unit)),
+  const labels = sessionAxisLabels(points.map((p) => p.startedAt))
+  const data = points.map((p, i) => ({
+    date: labels[i], max: r1(kgTo(p.maxWeight, unit)), e1rm: p.bestE1rm === null ? null : r1(kgTo(p.bestE1rm, unit)),
     reps: p.totalReps, volume: Math.round(kgTo(p.volume, unit)),
   }))
   const weeks = Math.max(1, (rangeState.range.to.getTime() - rangeState.range.from.getTime()) / (7 * 86400000))

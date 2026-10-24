@@ -46,6 +46,12 @@ export const fmtDate = (d: string | Date, pattern = "d 'de' MMM yyyy") =>
 export const fmtShort = (d: string | Date) => fmtDate(d, 'd MMM')
 export const fmtDateTime = (d: string | Date) => fmtDate(d, "d MMM yyyy, HH:mm")
 
+/** Etiquetas de eje por sesión: 'd MMM', con hora solo si hay varias sesiones el mismo día. */
+export function sessionAxisLabels(isos: string[]) {
+  const days = isos.map((iso) => localDay(iso))
+  return isos.map((iso, i) => fmtDate(iso, days.filter((d) => d === days[i]).length > 1 ? 'd MMM HH:mm' : 'd MMM'))
+}
+
 export function weekKey(iso: string | Date) {
   return localDay(startOfWeek(typeof iso === 'string' ? parseISO(iso) : iso, WEEK_OPTS))
 }

@@ -7,8 +7,8 @@ import { Badge, Button, Card, CardTitle, EmptyState, LoadingBlock, PageHeader, P
 import {
   useCompletedSessions, useMeasurements, usePartnership, usePrefs, useProfile, useRecords, useSchedule, useUnit,
 } from '@/data/queries'
-import { completedIn, exerciseHistory, goalProgress, sessionStats, weeklyStreak } from '@/lib/calc'
-import { fmtDate, fmtShort, inRange, presetRange, previousRange, todayKey } from '@/lib/dates'
+import { completedIn, exerciseHistory, goalProgress, isWorkingSet, sessionStats, weeklyStreak } from '@/lib/calc'
+import { fmtDate, fmtShort, inRange, presetRange, previousRange, sessionAxisLabels, todayKey } from '@/lib/dates'
 import { PR_LABELS } from '@/lib/labels'
 import { fmtVolume, fmtWeight, kgTo } from '@/lib/units'
 import { formatDuration, formatNumber, pctChange } from '@/lib/utils'
@@ -72,19 +72,23 @@ export default function DashboardPage() {
   const topExercise = useMemo(() => {
     const count = new Map<string, { n: number; name: string }>()
     for (const s of inPeriod) for (const we of s.workout_exercises ?? []) {
+      if (!(we.workout_sets ?? []).some(isWorkingSet)) continue
       const c = count.get(we.exercise_id) ?? { n: 0, name: we.exercise?.name ?? '' }
       c.n++
       count.set(we.exercise_id, c)
     }
     return [...count.entries()].sort((a, b) => b[1].n - a[1].n)[0]
   }, [inPeriod])
-  const strengthSeries = useMemo(() => topExercise
-    ? exerciseHistory(inPeriod, topExercise[0]).map((p) => ({
-        date: fmtShort(p.date),
-        e1rm: p.bestE1rm === null ? null : Math.round(kgTo(p.bestE1rm, unit) * 10) / 10,
-        max: Math.round(kgTo(p.maxWeight, unit) * 10) / 10,
-      }))
-    : [], [inPeriod, topExercise, unit])
+  const strengthSeries = useMemo(() => {
+    if (!topExercise) return []
+    const points = exerciseHistory(inPeriod, topExercise[0])
+    const labels = sessionAxisLabels(points.map((p) => p.startedAt))
+    return points.map((p, i) => ({
+      date: labels[i],
+      e1rm: p.bestE1rm === null ? null : Math.round(kgTo(p.bestE1rm, unit) * 10) / 10,
+      max: Math.round(kgTo(p.maxWeight, unit) * 10) / 10,
+    }))
+  }, [inPeriod, topExercise, unit])
 
   const pt = partnerId ? totals(completedIn(partnerSessions.data ?? [], range)) : null
   const ptPrev = partnerId ? totals(completedIn(partnerSessions.data ?? [], previousRange(range))) : null
