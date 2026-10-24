@@ -24,7 +24,8 @@ function devApi(): Plugin {
             method: req.method, headers: req.headers as Record<string, string>,
             body: req.method === 'POST' ? Buffer.concat(chunks) : undefined, signal: controller.signal,
           })
-          const response: Response = req.method === 'POST' ? await mod.POST(request) : new Response('Method Not Allowed', { status: 405 })
+          const handler = mod[req.method ?? 'GET'] as ((r: Request) => Promise<Response>) | undefined
+          const response: Response = handler ? await handler(request) : new Response('Method Not Allowed', { status: 405 })
           res.statusCode = response.status
           response.headers.forEach((v, k) => res.setHeader(k, v))
           if (response.body) Readable.fromWeb(response.body as never).pipe(res)

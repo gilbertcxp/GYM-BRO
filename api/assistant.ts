@@ -1,8 +1,10 @@
 // Función serverless (Vercel) del asistente de IA.
-// - La clave de Anthropic vive solo aquí (ANTHROPIC_API_KEY, sin prefijo VITE_).
+// - Proveedor: Google Gemini (GEMINI_API_KEY, plan gratuito) o Claude (ANTHROPIC_API_KEY, de pago).
+//   Si ambas claves existen se usa Claude. Las claves viven solo aquí (sin prefijo VITE_).
 // - Verifica el JWT de Supabase del usuario y descuenta su cuota diaria (RLS + RPC).
 // - Responde en streaming como NDJSON: {"t":"text","v":"..."} | {"t":"error","v":"..."} | {"t":"done","remaining":n}
 import Anthropic from '@anthropic-ai/sdk'
+import { ApiError, FinishReason, GoogleGenAI } from '@google/genai'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 
@@ -10,7 +12,9 @@ import { z } from 'zod'
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://wgcgftwsxhxetekfxftb.supabase.co'
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY
   || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndnY2dmdHdzeGh4ZXRla2Z4ZnRiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3OTUxMzksImV4cCI6MjEwODM3MTEzOX0.5lEt1l5ONcuIkEg-jbGszRdJO9EeDb_p07XB0pWgUec'
-const MODEL = 'claude-opus-5-5'
+const CLAUDE_MODEL = 'claude-opus-5-5'
+// Alias que apunta siempre al Gemini Flash vigente (con plan gratuito). Se puede fijar con GEMINI_MODEL.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest'
 const DAILY_LIMIT = Number(process.env.AI_DAILY_LIMIT || 40)
 
 const bodySchema = z.object({
@@ -21,7 +25,7 @@ const bodySchema = z.object({
   includeData: z.boolean().default(true),
 })
 
-// Prompt fijo: va primero y con cache_control para reutilizarse entre consultas.
+// Prompt fijo: va primero (en Claude, con cache_control para reutilizarse entre consultas).
 const SYSTEM_PROMPT = `Eres el Asistente GYM BRO, la ayuda integrada de "GYM BRO — Fitness Progress System", una aplicación web privada para que dos compañeros de gimnasio registren entrenamientos, midan su progreso y compitan sanamente.
 
 Respondes en español, de forma clara, práctica y breve (usa listas y negritas en Markdown cuando ayuden; evita respuestas largas si no se piden). Tienes dos áreas:
@@ -128,8 +132,79 @@ async function buildUserContext(sb: Supa, userId: string): Promise<string> {
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
+type Provider = 'claude' | 'gemini'
+const provider = (): Provider | null =>
+  process.env.ANTHROPIC_API_KEY ? 'claude' : process.env.GEMINI_API_KEY ? 'gemini' : null
+
+type ChatTurn = z.infer<typeof bodySchema>['messages'][number]
+type Emit = (text: string) => void
+
+/** Claude: prompt fijo cacheado + resumen del usuario sin cachear. */
+async function streamClaude(system: string[], messages: ChatTurn[], emit: Emit, signal: AbortSignal) {
+  const client = new Anthropic()
+  const stream = client.beta.messages.stream({
+    model: CLAUDE_MODEL,
+    max_tokens: 16000,
+    output_config: { effort: 'low' },
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    system: system.map((text, i) => (i === 0 ? { type: 'text' as const, text, cache_control: { type: 'ephemeral' as const } } : { type: 'text' as const, text })),
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+  }, { signal })
+  let wrote = false
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      wrote = true
+      emit(event.delta.text)
+    }
+  }
+  const final = await stream.finalMessage()
+  if (final.stop_reason === 'refusal' && !wrote) emit('No puedo ayudar con esa solicitud. Si es sobre entrenamiento o sobre la app, intenta reformularla.')
+  else if (final.stop_reason === 'max_tokens') emit('\n\n_(Respuesta recortada por longitud.)_')
+}
+
+/** Gemini (plan gratuito): mismo prompt como instrucción de sistema. */
+async function streamGemini(system: string[], messages: ChatTurn[], emit: Emit, signal: AbortSignal) {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+  const stream = await ai.models.generateContentStream({
+    model: GEMINI_MODEL,
+    contents: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+    config: { systemInstruction: system.join('\n\n'), maxOutputTokens: 8192, abortSignal: signal },
+  })
+  let wrote = false
+  let finish: FinishReason | undefined
+  for await (const chunk of stream) {
+    const text = chunk.text
+    if (text) {
+      wrote = true
+      emit(text)
+    }
+    finish = chunk.candidates?.[0]?.finishReason ?? finish
+  }
+  if (!wrote && finish && finish !== FinishReason.STOP) emit('No puedo ayudar con esa solicitud. Si es sobre entrenamiento o sobre la app, intenta reformularla.')
+  else if (finish === FinishReason.MAX_TOKENS) emit('\n\n_(Respuesta recortada por longitud.)_')
+}
+
+function providerErrorMessage(err: unknown): string {
+  if (err instanceof Anthropic.RateLimitError) return 'El servicio de IA está saturado; intenta en un minuto.'
+  if (err instanceof Anthropic.AuthenticationError) return 'La clave de Anthropic del servidor no es válida.'
+  if (err instanceof Anthropic.APIError) return `Error del servicio de IA (${err.status ?? 'red'}).`
+  if (err instanceof ApiError) {
+    if (err.status === 429) return 'Se alcanzó el límite gratuito de Gemini por ahora. Intenta en unos minutos.'
+    if (err.status === 400 || err.status === 403) return 'La clave de Gemini del servidor no es válida o no tiene acceso a este modelo.'
+    return `Error del servicio de IA (${err.status}).`
+  }
+  return 'No se pudo completar la respuesta.'
+}
+
+/** Indica a la pantalla qué proveedor está activo (para el aviso de privacidad). */
+export async function GET(): Promise<Response> {
+  return json(200, { provider: provider() })
+}
+
 export async function POST(request: Request): Promise<Response> {
-  if (!process.env.ANTHROPIC_API_KEY) return json(503, { error: 'El asistente no está configurado (falta ANTHROPIC_API_KEY en el servidor).' })
+  const active = provider()
+  if (!active) return json(503, { error: 'El asistente no está configurado (falta GEMINI_API_KEY en el servidor).' })
 
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (!token) return json(401, { error: 'Inicia sesión para usar el asistente.' })
@@ -150,55 +225,26 @@ export async function POST(request: Request): Promise<Response> {
   if (quotaError) return json(500, { error: 'No se pudo verificar tu cuota diaria.' })
   if (remaining === -1) return json(429, { error: `Alcanzaste el límite de ${DAILY_LIMIT} consultas de hoy. Vuelve mañana.` })
 
-  const system: Anthropic.Beta.BetaTextBlockParam[] = [
-    { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-  ]
+  const system = [SYSTEM_PROMPT]
   if (includeData) {
     try {
-      system.push({ type: 'text', text: await buildUserContext(sb, userData.user.id) })
+      system.push(await buildUserContext(sb, userData.user.id))
     } catch {
-      system.push({ type: 'text', text: 'No se pudieron cargar los datos del usuario en esta consulta.' })
+      system.push('No se pudieron cargar los datos del usuario en esta consulta.')
     }
   }
 
-  const client = new Anthropic()
   const encoder = new TextEncoder()
-  const send = (controller: ReadableStreamDefaultController<Uint8Array>, obj: unknown) =>
-    controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
-
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
+      const emit: Emit = (v) => send({ t: 'text', v })
       try {
-        const stream = client.beta.messages.stream({
-          model: MODEL,
-          max_tokens: 16000,
-          output_config: { effort: 'low' },
-          betas: ['server-side-fallback-2026-07-01'],
-          fallbacks: 'default',
-          system,
-          messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        }, { signal: request.signal })
-
-        let wrote = false
-        for await (const event of stream) {
-          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-            wrote = true
-            send(controller, { t: 'text', v: event.delta.text })
-          }
-        }
-        const final = await stream.finalMessage()
-        if (final.stop_reason === 'refusal' && !wrote) {
-          send(controller, { t: 'text', v: 'No puedo ayudar con esa solicitud. Si es sobre entrenamiento o sobre la app, intenta reformularla.' })
-        } else if (final.stop_reason === 'max_tokens') {
-          send(controller, { t: 'text', v: '\n\n_(Respuesta recortada por longitud.)_' })
-        }
-        send(controller, { t: 'done', remaining })
+        if (active === 'claude') await streamClaude(system, messages, emit, request.signal)
+        else await streamGemini(system, messages, emit, request.signal)
+        send({ t: 'done', remaining })
       } catch (err) {
-        const msg = err instanceof Anthropic.RateLimitError ? 'El servicio de IA está saturado; intenta en un minuto.'
-          : err instanceof Anthropic.AuthenticationError ? 'La clave de Anthropic del servidor no es válida.'
-          : err instanceof Anthropic.APIError ? `Error del servicio de IA (${err.status ?? 'red'}).`
-          : 'No se pudo completar la respuesta.'
-        if (!request.signal.aborted) send(controller, { t: 'error', v: msg })
+        if (!request.signal.aborted) send({ t: 'error', v: providerErrorMessage(err) })
       } finally {
         controller.close()
       }

@@ -62,6 +62,13 @@ export default function AssistantPage() {
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [messages])
   useEffect(() => () => abortRef.current?.abort(), [])
 
+  // Proveedor activo en el servidor: define el aviso de privacidad (undefined = cargando).
+  const [provider, setProvider] = useState<'claude' | 'gemini' | null | undefined>(undefined)
+  useEffect(() => {
+    fetch('/api/assistant').then((r) => r.json()).then((d) => setProvider(d.provider ?? null)).catch(() => setProvider(undefined))
+  }, [])
+  const sendTo = provider === 'gemini' ? 'a Google Gemini' : provider === 'claude' ? 'a Anthropic Claude' : 'al proveedor de IA'
+
   const appendToLast = (text: string, error = false) =>
     setMessages((prev) => {
       const next = [...prev]
@@ -122,6 +129,17 @@ export default function AssistantPage() {
       <PageHeader title="Ayuda IA" subtitle="Pregunta sobre la app o sobre entrenamiento. Las respuestas son orientativas y no sustituyen a un profesional."
         actions={messages.length > 0 && <Button variant="ghost" onClick={() => setConfirmReset(true)} disabled={busy}><RotateCcw className="h-4 w-4" /> Nueva conversación</Button>} />
 
+      {provider === null && (
+        <p role="status" className="mb-3 rounded-xl bg-warning/10 px-3 py-2 text-xs text-warning">
+          El asistente aún no está configurado en el servidor (falta la clave de la IA). Puedes ver la pantalla, pero no responderá.
+        </p>
+      )}
+      {provider === 'gemini' && (
+        <p className="mb-3 rounded-xl bg-surface-2 px-3 py-2 text-xs text-muted">
+          Funciona con Google Gemini (plan gratuito). Google puede revisar y usar estos mensajes para mejorar sus productos: no escribas datos personales sensibles.
+        </p>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-surface p-3 sm:p-5" aria-live="polite">
         {!messages.length ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
@@ -163,7 +181,7 @@ export default function AssistantPage() {
         </div>
         <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
           <div className="-my-2"><Switch checked={includeData} onChange={setIncludeData} label="Usar mis datos de entrenamiento"
-            description="Envía al asistente un resumen de tus sesiones, récords, medidas y rutinas para personalizar la respuesta." /></div>
+            description={`Envía ${sendTo} un resumen de tus sesiones, récords, medidas y rutinas para personalizar la respuesta.`} /></div>
           {remaining !== null && <span className="text-xs text-muted">{remaining} consultas restantes hoy</span>}
         </div>
       </form>
