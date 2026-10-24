@@ -154,13 +154,14 @@ export function Modal({ open, onOpenChange, title, description, children, classN
   )
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel = 'Confirmar', danger, loading, onConfirm }: {
+export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel = 'Confirmar', danger, loading, onConfirm, children }: {
   open: boolean; onOpenChange: (o: boolean) => void; title: string; description: string
-  confirmLabel?: string; danger?: boolean; loading?: boolean; onConfirm: () => void
+  confirmLabel?: string; danger?: boolean; loading?: boolean; onConfirm: () => void; children?: ReactNode
 }) {
   return (
     <Modal open={open} onOpenChange={onOpenChange} title={title}>
       <p className="mb-6 text-sm text-muted">{description}</p>
+      {children && <div className="mb-6">{children}</div>}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
         <Button variant={danger ? 'danger' : 'primary'} loading={loading} onClick={onConfirm}>{confirmLabel}</Button>
