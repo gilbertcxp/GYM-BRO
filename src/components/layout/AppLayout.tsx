@@ -1,6 +1,6 @@
 import {
   Bell, CalendarDays, Camera, ChartLine, Dumbbell, History, LayoutDashboard, ListChecks, Menu,
-  Ruler, Settings, Swords, Target, Timer, X,
+  Ruler, Settings, Sparkles, Swords, Target, Timer, X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
@@ -23,6 +23,7 @@ export const NAV = [
   { to: '/objetivos', label: 'Objetivos', icon: Target },
   { to: '/historial', label: 'Historial y reportes', icon: History },
   { to: '/notificaciones', label: 'Notificaciones', icon: Bell },
+  { to: '/ayuda', label: 'Ayuda IA', icon: Sparkles },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
 ] as const
 

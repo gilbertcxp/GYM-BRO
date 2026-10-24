@@ -23,6 +23,7 @@ const HistoryPage = lazy(() => import('./features/history/HistoryPage'))
 const SessionDetailPage = lazy(() => import('./features/history/SessionDetailPage'))
 const NotificationsPage = lazy(() => import('./features/notifications/NotificationsPage'))
 const SettingsPage = lazy(() => import('./features/settings/SettingsPage'))
+const AssistantPage = lazy(() => import('./features/assistant/AssistantPage'))
 
 function Protected({ children }: { children: ReactNode }) {
   const { session, loading, recovery } = useAuth()
@@ -81,6 +82,7 @@ export function App() {
             <Route path="historial" element={<HistoryPage />} />
             <Route path="historial/:id" element={<SessionDetailPage />} />
             <Route path="notificaciones" element={<NotificationsPage />} />
+            <Route path="ayuda" element={<AssistantPage />} />
             <Route path="configuracion" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
