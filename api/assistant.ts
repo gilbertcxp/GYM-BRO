@@ -163,26 +163,43 @@ async function streamClaude(system: string[], messages: ChatTurn[], emit: Emit, 
   else if (final.stop_reason === 'max_tokens') emit('\n\n_(Respuesta recortada por longitud.)_')
 }
 
+// Si un modelo está saturado (503), no disponible (404) o sin cupo gratuito (429) antes de
+// empezar a responder, se intenta el siguiente de la lista.
+const GEMINI_MODELS = [...new Set([GEMINI_MODEL, 'gemini-2.5-flash', 'gemini-2.5-flash-lite'])]
+const RETRYABLE_GEMINI = new Set([404, 429, 500, 503])
+
 /** Gemini (plan gratuito): mismo prompt como instrucción de sistema. */
 async function streamGemini(system: string[], messages: ChatTurn[], emit: Emit, signal: AbortSignal) {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
-  const stream = await ai.models.generateContentStream({
-    model: GEMINI_MODEL,
-    contents: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-    config: { systemInstruction: system.join('\n\n'), maxOutputTokens: 8192, abortSignal: signal },
-  })
-  let wrote = false
-  let finish: FinishReason | undefined
-  for await (const chunk of stream) {
-    const text = chunk.text
-    if (text) {
-      wrote = true
-      emit(text)
+  const contents = messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }))
+  let lastError: unknown
+  for (const model of GEMINI_MODELS) {
+    let wrote = false
+    try {
+      const stream = await ai.models.generateContentStream({
+        model,
+        contents,
+        config: { systemInstruction: system.join('\n\n'), maxOutputTokens: 8192, abortSignal: signal },
+      })
+      let finish: FinishReason | undefined
+      for await (const chunk of stream) {
+        const text = chunk.text
+        if (text) {
+          wrote = true
+          emit(text)
+        }
+        finish = chunk.candidates?.[0]?.finishReason ?? finish
+      }
+      if (!wrote && finish && finish !== FinishReason.STOP) emit('No puedo ayudar con esa solicitud. Si es sobre entrenamiento o sobre la app, intenta reformularla.')
+      else if (finish === FinishReason.MAX_TOKENS) emit('\n\n_(Respuesta recortada por longitud.)_')
+      return
+    } catch (err) {
+      console.error(`Gemini ${model}:`, err instanceof ApiError ? `${err.status} ${err.message}` : err)
+      lastError = err
+      if (wrote || signal.aborted || !(err instanceof ApiError && RETRYABLE_GEMINI.has(err.status))) throw err
     }
-    finish = chunk.candidates?.[0]?.finishReason ?? finish
   }
-  if (!wrote && finish && finish !== FinishReason.STOP) emit('No puedo ayudar con esa solicitud. Si es sobre entrenamiento o sobre la app, intenta reformularla.')
-  else if (finish === FinishReason.MAX_TOKENS) emit('\n\n_(Respuesta recortada por longitud.)_')
+  throw lastError
 }
 
 function providerErrorMessage(err: unknown): string {
@@ -190,9 +207,12 @@ function providerErrorMessage(err: unknown): string {
   if (err instanceof Anthropic.AuthenticationError) return 'La clave de Anthropic del servidor no es válida.'
   if (err instanceof Anthropic.APIError) return `Error del servicio de IA (${err.status ?? 'red'}).`
   if (err instanceof ApiError) {
-    if (err.status === 429) return 'Se alcanzó el límite gratuito de Gemini por ahora. Intenta en unos minutos.'
-    if (err.status === 400 || err.status === 403) return 'La clave de Gemini del servidor no es válida o no tiene acceso a este modelo.'
-    return `Error del servicio de IA (${err.status}).`
+    // El mensaje de Google no contiene secretos y ayuda a diagnosticar (cuota, región, modelo).
+    const detail = err.message.replace(/\s+/g, ' ').slice(0, 200)
+    if (err.status === 429) return `Se alcanzó el límite gratuito de Gemini por ahora. Intenta en unos minutos. (${detail})`
+    if (err.status === 503) return `Los modelos gratuitos de Gemini están saturados ahora mismo. Intenta en un rato. (${detail})`
+    if (err.status === 400 || err.status === 403) return `La clave de Gemini no es válida o no tiene acceso a este modelo. (${detail})`
+    return `Error del servicio de IA (${err.status}): ${detail}`
   }
   return 'No se pudo completar la respuesta.'
 }
