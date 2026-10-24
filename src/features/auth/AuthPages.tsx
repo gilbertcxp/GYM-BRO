@@ -181,11 +181,18 @@ export function ResetPasswordPage() {
 export function SetupRequiredPage() {
   return (
     <AuthShell title="Configuración pendiente" subtitle="Falta conectar Supabase.">
-      <ol className="list-decimal space-y-2 pl-5 text-sm text-muted">
-        <li>Copia <code className="text-text">.env.example</code> a <code className="text-text">.env.local</code>.</li>
-        <li>Completa <code className="text-text">VITE_SUPABASE_URL</code> y <code className="text-text">VITE_SUPABASE_ANON_KEY</code> (clave pública).</li>
-        <li>Reinicia <code className="text-text">npm run dev</code>.</li>
-      </ol>
+      {import.meta.env.DEV ? (
+        <ol className="list-decimal space-y-2 pl-5 text-sm text-muted">
+          <li>Copia <code className="text-text">.env.example</code> a <code className="text-text">.env.local</code>.</li>
+          <li>Completa <code className="text-text">VITE_SUPABASE_URL</code> y <code className="text-text">VITE_SUPABASE_ANON_KEY</code> (clave pública).</li>
+          <li>Reinicia <code className="text-text">npm run dev</code>.</li>
+        </ol>
+      ) : (
+        <ol className="list-decimal space-y-2 pl-5 text-sm text-muted">
+          <li>En Vercel: Settings → Environment Variables, define <code className="text-text">VITE_SUPABASE_URL</code> y <code className="text-text">VITE_SUPABASE_ANON_KEY</code> para Production.</li>
+          <li>Deployments → ⋯ → Redeploy (las variables se incorporan al compilar).</li>
+        </ol>
+      )}
     </AuthShell>
   )
 }
