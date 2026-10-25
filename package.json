@@ -24,6 +24,7 @@
     "idb-keyval": "^6",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.460.0",
     "react": "^19",
     "react-dom": "^19",
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.3",
     "@tailwindcss/vite": "^4",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",

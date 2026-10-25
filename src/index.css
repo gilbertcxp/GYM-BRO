@@ -99,3 +99,24 @@ input[type="number"] {
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* Mapas (Leaflet) */
+.leaflet-container {
+  background: var(--surface-2);
+  font-family: var(--font-sans);
+}
+.leaflet-tooltip.km-marker {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #0a0a0a;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 0;
+}
+.leaflet-tooltip.km-marker::before {
+  display: none;
+}
+:root:not(.light) .leaflet-tile-pane {
+  filter: brightness(0.75) contrast(1.1) saturate(0.8);
+}

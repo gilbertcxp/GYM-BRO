@@ -21,6 +21,8 @@ export interface CardioSession {
   incline_pct: number | null
   notes: string | null
   created_at: string
+  tracking_mode: 'manual' | 'gps'
+  ended_at: string | null
 }
 
 export const CARDIO_LABELS: Record<CardioActivity, string> = {
@@ -111,3 +113,37 @@ export function cardioBests(list: CardioSession[], activity: CardioActivity): Ca
 
 /** Ordena de más reciente a más antigua. */
 export const sortCardio = (list: CardioSession[]) => [...list].sort((a, b) => parseISO(b.started_at).getTime() - parseISO(a.started_at).getTime())
+
+/**
+ * MET aproximados (Compendium of Physical Activities). La velocidad ajusta caminar, correr y bicicleta.
+ * Sirven solo para una ESTIMACIÓN de calorías: kcal ≈ MET × peso (kg) × horas.
+ */
+export function metFor(activity: CardioActivity, speedKmh: number | null): number {
+  const v = speedKmh ?? 0
+  switch (activity) {
+    case 'walking': return v >= 6 ? 5 : v >= 4.8 ? 3.8 : 3
+    case 'running':
+    case 'treadmill':
+      if (v > 0 && v < 6.5) return v >= 4.8 ? 3.8 : 3 // a ese ritmo es caminar
+      return v ? Math.max(6, Math.min(16, v)) : 9.8 // correr ≈ 1 MET por km/h
+    case 'cycling': return v >= 25 ? 10 : v >= 22 ? 8 : v >= 19 ? 6.8 : v >= 16 ? 5.8 : 4
+    case 'stationary_bike': return 6.8
+    case 'elliptical': return 5
+    case 'rowing': return 7
+    case 'stairs': return 9
+    case 'swimming': return 7
+    case 'jump_rope': return 11
+    case 'hiit': return 8
+    default: return 5
+  }
+}
+
+/** Calorías ESTIMADAS (null sin peso corporal registrado). */
+export function estimateCalories(s: Pick<CardioSession, 'activity' | 'duration_seconds' | 'distance_km'>, weightKg: number | null | undefined) {
+  if (!weightKg || s.duration_seconds <= 0) return null
+  const speed = s.distance_km ? Number(s.distance_km) / (s.duration_seconds / 3600) : null
+  return Math.round(metFor(s.activity, speed) * weightKg * (s.duration_seconds / 3600))
+}
+
+/** Actividades al aire libre donde tiene sentido el GPS. */
+export const GPS_ACTIVITIES = new Set<CardioActivity>(['running', 'walking', 'cycling', 'swimming', 'rowing', 'other'])

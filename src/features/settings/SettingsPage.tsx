@@ -185,6 +185,8 @@ function PrivacyTab() {
       <Switch checked={p.share_workouts} onChange={(v) => m.mutate({ share_workouts: v })} label="Entrenamientos, récords, objetivos y calendario" description="Necesario para la comparación Gym Bro." />
       <Switch checked={p.share_measurements} onChange={(v) => m.mutate({ share_measurements: v })} label="Peso y medidas corporales" />
       <Switch checked={p.share_photos} onChange={(v) => m.mutate({ share_photos: v })} label="Fotografías de progreso" description="Además, cada foto debe marcarse como visible individualmente." />
+      <Switch checked={p.share_routes} onChange={(v) => m.mutate({ share_routes: v })} label="Mapas de mis recorridos de cardio"
+        description="Las rutas GPS muestran por dónde entrenas (incluso cerca de tu casa). Requiere también compartir entrenamientos." />
       <p className="mt-3 text-xs text-muted">Tu nombre y foto de perfil son visibles para tu Gym Bro vinculado. El progreso de los retos en los que participas es visible para los demás participantes.</p>
     </Card>
   )

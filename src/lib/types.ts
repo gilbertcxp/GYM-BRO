@@ -32,6 +32,7 @@ export interface Profile {
   experience_level: ExperienceLevel | null
   main_goal: MainGoal | null
   training_preferences: string | null
+  cardio_weekly_goal_km: number | null
   created_at: string
   updated_at: string
 }
@@ -45,6 +46,7 @@ export interface UserPreferences {
   share_workouts: boolean
   share_measurements: boolean
   share_photos: boolean
+  share_routes: boolean
   notify_scheduled: boolean
   notify_challenges: boolean
   notify_records: boolean

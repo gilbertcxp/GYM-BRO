@@ -3,7 +3,7 @@ import { cardioBests, cardioByWeek, cardioTotals, fmtPace, paceSecondsPer, speed
 
 const s = (over: Partial<CardioSession>): CardioSession => ({
   id: crypto.randomUUID(), user_id: 'u', activity: 'running', started_at: '2026-10-20T12:00:00', duration_seconds: 1800,
-  distance_km: 5, calories: null, avg_heart_rate: null, max_heart_rate: null, rpe: null, incline_pct: null, notes: null, created_at: '', ...over,
+  distance_km: 5, calories: null, avg_heart_rate: null, max_heart_rate: null, rpe: null, incline_pct: null, notes: null, created_at: '', tracking_mode: 'manual', ended_at: null, ...over,
 })
 
 describe('ritmo y velocidad', () => {
