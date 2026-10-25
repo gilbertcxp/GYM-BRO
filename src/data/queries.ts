@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/
 import { toast } from 'sonner'
 import { useUserId } from '@/features/auth/AuthProvider'
 import { errorMessage } from '@/lib/errors'
+import type { CardioSession } from '@/lib/cardio'
 import { supabase } from '@/lib/supabase'
 import type {
   AppNotification, BodyMeasurement, Challenge, ChallengeProgress, Exercise, Goal, Partnership,
@@ -33,6 +34,7 @@ export const keys = {
   challenges: ['challenges'] as const,
   challengeProgress: (id: string) => ['challengeProgress', id] as const,
   notifications: (user: string) => ['notifications', user] as const,
+  cardio: (user: string) => ['cardio', user] as const,
 }
 
 /** Mutación con toast de error y de éxito, e invalidación de claves. */
@@ -269,5 +271,18 @@ export function useNotifications() {
       supabase.from('notifications').select('*').eq('user_id', me).order('created_at', { ascending: false }).limit(100),
     ),
     refetchInterval: 5 * 60_000,
+  })
+}
+
+// ---------- Cardio ----------
+export function useCardio(userId?: string, opts: { enabled?: boolean } = {}) {
+  const me = useUserId()
+  const id = userId ?? me
+  return useQuery({
+    queryKey: keys.cardio(id),
+    enabled: opts.enabled ?? true,
+    queryFn: () => unwrap<CardioSession[]>(
+      supabase.from('cardio_sessions').select('*').eq('user_id', id).order('started_at', { ascending: false }).limit(1000),
+    ),
   })
 }

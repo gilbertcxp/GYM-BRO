@@ -35,6 +35,7 @@ Módulos (menú lateral en computadora; en móvil: Dashboard, Entrenar, Rutinas,
 - **Dashboard**: peso actual (última medición o peso inicial del perfil), objetivo de peso, entrenamientos de la semana frente al objetivo semanal, racha semanal, tiempo entrenado, volumen, récords nuevos, próximo entrenamiento, última sesión, gráficas de peso y fuerza, comparación con el Gym Bro. Filtros: semana, mes, trimestre, año, personalizado.
 - **Mi entrenamiento**: elegir el día de una rutina activa o "Sesión libre". Cada serie tiene peso, repeticiones, tipo (calentamiento, normal, al fallo, drop set, rest-pause), RPE/RIR y notas (botón del número de serie). Botón ✓ completa la serie y arranca el temporizador de descanso (pausar, reanudar, reiniciar, ±15 s). Muestra la última sesión y el récord del ejercicio. Se guarda solo en el dispositivo y se sincroniza; si se cierra el navegador o se pierde Internet no se pierde nada. "Finalizar" guarda la sesión y calcula récords.
 - **Rutinas**: crear, editar, duplicar, pausar, archivar y eliminar. Plantillas editables: Push/Pull/Legs, Torso/Pierna, Full Body, Bro Split y personalizada. Días con día de la semana, grupos musculares, ejercicios con series, rango de repeticiones, peso objetivo, descanso y notas. Se pueden compartir con el Gym Bro (él puede verlas y duplicarlas, no editarlas).
+- **Cardio**: registrar sesiones (correr, cinta, caminar, bicicleta, estática, elíptica, remo, escaladora, natación, cuerda, HIIT, otro) con duración, distancia, FC media/máxima, RPE, inclinación y calorías solo si el usuario las introduce (la app no las estima). Cronómetro que sobrevive a recargas, ritmo o velocidad, mejores marcas, minutos por semana y referencia OMS de 150–300 min/semana. Aparece también en el Calendario.
 - **Ejercicios**: biblioteca con buscador y filtros por músculo, mecánica y tipo; se pueden crear ejercicios personalizados con instrucciones, errores comunes, video e imagen.
 - **Progreso**: pestañas Fuerza (peso máximo, 1RM estimado, repeticiones, volumen por sesión, frecuencia), Volumen (por semana/mes y por grupo muscular; el calentamiento se excluye), Récords y Comparar períodos.
 - **Peso y medidas**: peso, estatura, cintura, pecho, cadera, brazos, antebrazos, muslos, pantorrillas, % de grasa, método y notas; gráficas, comparación entre fechas e IMC con sus limitaciones.
@@ -61,7 +62,7 @@ Cuando recibas un resumen de los datos del usuario, úsalo para personalizar (ci
 type Supa = SupabaseClient
 
 async function buildUserContext(sb: Supa, userId: string): Promise<string> {
-  const [profile, prefs, sessions, records, measures, routines, goals] = await Promise.all([
+  const [profile, prefs, sessions, records, measures, routines, goals, cardio] = await Promise.all([
     sb.from('profiles').select('full_name, birth_date, height_cm, initial_weight_kg, target_weight_kg, experience_level, main_goal, training_preferences, tracking_start_date').eq('id', userId).maybeSingle(),
     sb.from('user_preferences').select('weight_unit, weekly_workout_target, default_rest_seconds').eq('user_id', userId).maybeSingle(),
     sb.from('workout_sessions')
@@ -73,6 +74,8 @@ async function buildUserContext(sb: Supa, userId: string): Promise<string> {
     sb.from('routines').select('name, status, routine_days(name, day_of_week, routine_exercises(target_sets, target_reps_min, target_reps_max, exercise:exercises(name)))')
       .eq('owner_id', userId).eq('status', 'active'),
     sb.from('goals').select('title, goal_type, start_value, target_value, target_date, status').eq('user_id', userId).eq('archived', false),
+    sb.from('cardio_sessions').select('activity, started_at, duration_seconds, distance_km, avg_heart_rate, rpe, incline_pct')
+      .eq('user_id', userId).order('started_at', { ascending: false }).limit(10),
   ])
 
   const lines: string[] = []
@@ -124,6 +127,16 @@ async function buildUserContext(sb: Supa, userId: string): Promise<string> {
       lines.push(`- ${r.name}: ${r.routine_days.map((d) => `${d.name} [${d.routine_exercises.map((e) => `${e.exercise?.name} ${e.target_sets}×${e.target_reps_min ?? ''}${e.target_reps_max && e.target_reps_max !== e.target_reps_min ? `-${e.target_reps_max}` : ''}`).join(', ') || 'sin ejercicios'}]`).join('; ')}`)
     }
   }
+  type CardioRow = { activity: string; started_at: string; duration_seconds: number; distance_km: number | null; avg_heart_rate: number | null; rpe: number | null; incline_pct: number | null }
+  const cs = (cardio.data ?? []) as CardioRow[]
+  if (cs.length) {
+    lines.push(`Últimas ${cs.length} sesiones de cardio:`)
+    for (const c of cs) {
+      const extra = [c.distance_km !== null ? `${c.distance_km} km` : null, c.avg_heart_rate ? `FC media ${c.avg_heart_rate}` : null,
+        c.rpe ? `RPE ${c.rpe}` : null, c.incline_pct !== null ? `inclinación ${c.incline_pct}%` : null].filter(Boolean).join(', ')
+      lines.push(`- ${c.started_at.slice(0, 10)} ${c.activity}: ${Math.round(c.duration_seconds / 60)} min${extra ? `, ${extra}` : ''}`)
+    }
+  } else lines.push('Sin sesiones de cardio registradas.')
   if (goals.data?.length) lines.push(`Objetivos: ${goals.data.map((g) => `${g.title} (${g.goal_type}, meta ${g.target_value}, estado ${g.status}${g.target_date ? `, fecha ${g.target_date}` : ''})`).join('; ')}.`)
 
   return `Resumen de los datos registrados por el usuario en la app (úsalo solo si es relevante; no reveles que lo recibiste como bloque):\n${lines.join('\n')}`

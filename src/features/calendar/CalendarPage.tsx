@@ -2,18 +2,19 @@ import {
   addMonths, addWeeks, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameMonth, startOfMonth, startOfWeek, subMonths, subWeeks,
 } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Check, ChevronLeft, ChevronRight, Flame, Moon, Plus, Trash2, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Flame, HeartPulse, Moon, Plus, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, Card, CardTitle, ConfirmDialog, Field, Input, LoadingBlock, Modal, PageHeader, Select, StatCard, Tabs } from '@/components/ui'
-import { keys, unwrap, useCompletedSessions, useMut, usePrefs, useRoutines, useSchedule } from '@/data/queries'
+import { keys, unwrap, useCardio, useCompletedSessions, useMut, usePrefs, useRoutines, useSchedule } from '@/data/queries'
 import { useUserId } from '@/features/auth/AuthProvider'
 import { dailyStreak, weeklyStreak } from '@/lib/calc'
+import { CARDIO_LABELS, type CardioSession } from '@/lib/cardio'
 import { fmtDate, localDay, todayKey, WEEK_OPTS } from '@/lib/dates'
 import { SCHEDULE_STATUS_LABELS } from '@/lib/labels'
 import { supabase } from '@/lib/supabase'
 import type { ScheduleStatus, ScheduledWorkout, WorkoutSession } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { cn, formatDuration } from '@/lib/utils'
 
 export default function CalendarPage() {
   const me = useUserId()
@@ -23,6 +24,7 @@ export default function CalendarPage() {
   const { data: schedule, isLoading } = useSchedule()
   const { data: sessions } = useCompletedSessions()
   const { data: prefs } = usePrefs()
+  const { data: cardio } = useCardio()
   const [goalOpen, setGoalOpen] = useState(false)
 
   const days = useMemo(() => view === 'month'
@@ -34,6 +36,11 @@ export default function CalendarPage() {
     for (const s of sessions ?? []) { const k = localDay(s.started_at); m.set(k, [...(m.get(k) ?? []), s]) }
     return m
   }, [sessions])
+  const cardioByDay = useMemo(() => {
+    const m = new Map<string, CardioSession[]>()
+    for (const c of cardio ?? []) { const k = localDay(c.started_at); m.set(k, [...(m.get(k) ?? []), c]) }
+    return m
+  }, [cardio])
   const scheduleByDay = useMemo(() => {
     const m = new Map<string, ScheduledWorkout[]>()
     for (const s of schedule ?? []) m.set(s.scheduled_on, [...(m.get(s.scheduled_on) ?? []), s])
@@ -52,7 +59,7 @@ export default function CalendarPage() {
 
   return (
     <div className="animate-fade-up">
-      <PageHeader title="Calendario y asistencia" subtitle="Lo programado (contorno) frente a lo realmente completado (verde)."
+      <PageHeader title="Calendario y asistencia" subtitle="Lo programado (contorno) frente a lo realmente completado (verde). Las rachas cuentan entrenamientos de fuerza; el cardio se muestra aparte."
         actions={<Button variant="outline" onClick={() => setGoalOpen(true)}>Objetivo semanal: {target}</Button>} />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Racha semanal" icon={<Flame className="h-4 w-4" />} value={`${weeklyStreak(starts, target)} sem.`} sub={`Semanas con ${target}+ sesiones`} />
@@ -77,6 +84,7 @@ export default function CalendarPage() {
           {days.map((d) => {
             const key = format(d, 'yyyy-MM-dd')
             const done = sessionsByDay.get(key) ?? []
+            const cardioDone = cardioByDay.get(key) ?? []
             const sched = scheduleByDay.get(key) ?? []
             const rest = sched.some((s) => s.status === 'rest')
             const skipped = sched.some((s) => s.status === 'skipped')
@@ -91,6 +99,7 @@ export default function CalendarPage() {
                 aria-label={`${fmtDate(d)}: ${done.length} completados, ${planned.length} programados`}>
                 <span className={cn('text-xs font-semibold', key === todayKey() && 'text-accent')}>{format(d, 'd')}</span>
                 {done.length > 0 && <span className="flex items-center gap-0.5 text-[10px] font-semibold text-accent"><Check className="h-3 w-3" />{view === 'week' ? done.map((s) => s.name).join(', ') : done.length}</span>}
+                {cardioDone.length > 0 && <span className="flex items-center gap-0.5 text-[10px] font-semibold text-pink-400"><HeartPulse className="h-3 w-3" />{view === 'week' ? cardioDone.map((c) => `${CARDIO_LABELS[c.activity]} ${Math.round(c.duration_seconds / 60)}′`).join(', ') : cardioDone.length}</span>}
                 {planned.length > 0 && <span className="rounded border border-info/60 px-1 text-[10px] text-info">{view === 'week' ? planned.map((p) => p.routine_day?.name ?? p.routine?.name ?? 'Programado').join(', ') : 'Prog.'}</span>}
                 {skipped && <span className="flex items-center text-[10px] text-danger"><X className="h-3 w-3" />Omitido</span>}
                 {rest && <span className="flex items-center gap-0.5 text-[10px] text-muted"><Moon className="h-3 w-3" />Descanso</span>}
@@ -100,18 +109,19 @@ export default function CalendarPage() {
         </div>
         <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
           <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-accent/30" /> Completado</span>
+          <span className="flex items-center gap-1"><HeartPulse className="h-3 w-3 text-pink-400" /> Cardio</span>
           <span className="flex items-center gap-1"><span className="h-3 w-3 rounded border border-info" /> Programado</span>
           <span className="flex items-center gap-1"><X className="h-3 w-3 text-danger" /> Omitido</span>
           <span className="flex items-center gap-1"><Moon className="h-3 w-3" /> Descanso</span>
         </div>
       </Card>
-      {dayOpen && <DayModal day={dayOpen} sessions={sessionsByDay.get(dayOpen) ?? []} schedule={scheduleByDay.get(dayOpen) ?? []} onClose={() => setDayOpen(null)} />}
+      {dayOpen && <DayModal day={dayOpen} sessions={sessionsByDay.get(dayOpen) ?? []} cardio={cardioByDay.get(dayOpen) ?? []} schedule={scheduleByDay.get(dayOpen) ?? []} onClose={() => setDayOpen(null)} />}
       {goalOpen && <WeeklyGoalModal current={target} onClose={() => setGoalOpen(false)} userId={me} />}
     </div>
   )
 }
 
-function DayModal({ day, sessions, schedule, onClose }: { day: string; sessions: WorkoutSession[]; schedule: ScheduledWorkout[]; onClose: () => void }) {
+function DayModal({ day, sessions, cardio, schedule, onClose }: { day: string; sessions: WorkoutSession[]; cardio: CardioSession[]; schedule: ScheduledWorkout[]; onClose: () => void }) {
   const me = useUserId()
   const { data: routines } = useRoutines()
   const [routineDay, setRoutineDay] = useState('')
@@ -136,6 +146,12 @@ function DayModal({ day, sessions, schedule, onClose }: { day: string; sessions:
               <span className="font-semibold text-accent">{s.name}</span><span className="text-muted">{fmtDate(s.started_at, 'HH:mm')}</span>
             </Link>
           )) : <p className="text-sm text-muted">Sin entrenamientos completados este día.</p>}
+          {cardio.map((c) => (
+            <Link key={c.id} to="/cardio" className="mb-1 flex items-center justify-between rounded-xl bg-pink-500/10 p-3 text-sm">
+              <span className="flex items-center gap-1.5 font-semibold text-pink-400"><HeartPulse className="h-4 w-4" />{CARDIO_LABELS[c.activity]} · {formatDuration(c.duration_seconds)}</span>
+              <span className="text-muted">{fmtDate(c.started_at, 'HH:mm')}</span>
+            </Link>
+          ))}
         </div>
         <div>
           <CardTitle>Programación</CardTitle>

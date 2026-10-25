@@ -1,5 +1,5 @@
 import {
-  Bell, CalendarDays, Camera, ChartLine, Dumbbell, History, LayoutDashboard, ListChecks, Menu,
+  Bell, CalendarDays, HeartPulse, Camera, ChartLine, Dumbbell, History, LayoutDashboard, ListChecks, Menu,
   Ruler, Settings, Sparkles, Swords, Target, Timer, X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -14,6 +14,7 @@ export const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/entrenamiento', label: 'Mi entrenamiento', icon: Timer },
   { to: '/rutinas', label: 'Rutinas', icon: ListChecks },
+  { to: '/cardio', label: 'Cardio', icon: HeartPulse },
   { to: '/ejercicios', label: 'Ejercicios', icon: Dumbbell },
   { to: '/progreso', label: 'Progreso', icon: ChartLine },
   { to: '/medidas', label: 'Peso y medidas', icon: Ruler },

@@ -23,6 +23,7 @@ const HistoryPage = lazy(() => import('./features/history/HistoryPage'))
 const SessionDetailPage = lazy(() => import('./features/history/SessionDetailPage'))
 const NotificationsPage = lazy(() => import('./features/notifications/NotificationsPage'))
 const SettingsPage = lazy(() => import('./features/settings/SettingsPage'))
+const CardioPage = lazy(() => import('./features/cardio/CardioPage'))
 const AssistantPage = lazy(() => import('./features/assistant/AssistantPage'))
 
 function Protected({ children }: { children: ReactNode }) {
@@ -72,6 +73,7 @@ export function App() {
             <Route index element={<DashboardPage />} />
             <Route path="entrenamiento" element={<WorkoutPage />} />
             <Route path="rutinas" element={<RoutinesPage />} />
+            <Route path="cardio" element={<CardioPage />} />
             <Route path="ejercicios" element={<ExercisesPage />} />
             <Route path="progreso" element={<ProgressPage />} />
             <Route path="medidas" element={<MeasurementsPage />} />
